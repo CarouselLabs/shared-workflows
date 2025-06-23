@@ -46,12 +46,6 @@ jobs:
           npm install -g pnpm
           pnpm install
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::${{ inputs.aws-account-id }}:role/GitHubAction-${{ inputs.tenant }}-${{ inputs.service_name }}
-          aws-region: eu-west-1
-
       - name: Set Domain Based on Stage
         id: set-domain
         run: |
@@ -76,6 +70,12 @@ jobs:
 
       - name: Install Serverless Framework
         run: npm install -g serverless
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ inputs.aws-account-id }}:role/github-actions-oidc-role-tenant-terraform
+          aws-region: eu-west-1
 
       - name: Deploy to AWS via Serverless
         run: serverless deploy --stage ${{ inputs.stage }} --tenant ${{ inputs.tenant }} --website_subdomain ${{ inputs.website_subdomain }} --root_domain ${{ env.ROOT_DOMAIN }} --full_domain ${{ env.FULL_DOMAIN }}
