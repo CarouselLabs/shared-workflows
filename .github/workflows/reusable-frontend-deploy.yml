@@ -40,11 +40,37 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
+          cache: 'npm'
+      
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+          run_install: false
+
+      - name: Get package manager
+        id: package-manager
+        run: |
+          if [ -f "pnpm-lock.yaml" ]; then
+            echo "manager=pnpm" >> $GITHUB_OUTPUT
+            echo "command=pnpm install --frozen-lockfile" >> $GITHUB_OUTPUT
+          elif [ -f "yarn.lock" ]; then
+            echo "manager=yarn" >> $GITHUB_OUTPUT
+            echo "command=yarn install --frozen-lockfile" >> $GITHUB_OUTPUT
+          else
+            echo "manager=npm" >> $GITHUB_OUTPUT
+            echo "command=npm ci" >> $GITHUB_OUTPUT
+          fi
 
       - name: Install Dependencies
-        run: |
-          npm install -g pnpm
-          pnpm install
+        run: ${{ steps.package-manager.outputs.command }}
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ inputs.aws-account-id }}:role/github-actions-oidc-role-tenant-terraform
+          aws-region: eu-west-1
+          audience: sts.amazonaws.com
 
       - name: Set Domain Based on Stage
         id: set-domain
@@ -71,13 +97,7 @@ jobs:
       - name: Install Serverless Framework
         run: npm install -g serverless
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::${{ inputs.aws-account-id }}:role/github-actions-oidc-role-tenant-terraform
-          aws-region: eu-west-1
-
       - name: Deploy to AWS via Serverless
         run: serverless deploy --stage ${{ inputs.stage }} --tenant ${{ inputs.tenant }} --website_subdomain ${{ inputs.website_subdomain }} --root_domain ${{ env.ROOT_DOMAIN }} --full_domain ${{ env.FULL_DOMAIN }}
         env:
-          AWS_REGION: eu-west-1
+          AWS_REGION: eu-west-1 
