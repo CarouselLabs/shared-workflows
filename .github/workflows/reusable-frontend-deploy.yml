@@ -1,0 +1,82 @@
+name: Reusable Next.js Frontend Deployment
+
+on:
+  workflow_call:
+    inputs:
+      tenant:
+        description: 'The tenant to deploy for'
+        required: true
+        type: string
+      stage:
+        description: 'The stage to deploy to (dev, prod)'
+        required: true
+        type: string
+      service_name:
+        description: 'The name of the service'
+        required: true
+        type: string
+      website_subdomain:
+        description: 'The subdomain of the website to deploy'
+        required: true
+        type: string
+      aws-account-id:
+        description: "The AWS Account ID for deployment"
+        required: true
+        type: string
+
+jobs:
+  deploy-frontend:
+    name: Deploy ${{ inputs.service_name }} to ${{ inputs.stage }}
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout Service Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install NPM Dependencies
+        run: npm ci
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ inputs.aws-account-id }}:role/GitHubAction-${{ inputs.tenant }}-${{ inputs.service_name }}
+          aws-region: eu-west-1
+
+      - name: Set Domain Based on Stage
+        id: set-domain
+        run: |
+          if [[ "${{ inputs.stage }}" == "prod" ]]; then
+            echo "ROOT_DOMAIN=carousellabs.co" >> $GITHUB_ENV
+          else
+            echo "ROOT_DOMAIN=dev.carousellabs.co" >> $GITHUB_ENV
+          fi
+          echo "FULL_DOMAIN=${{ inputs.website_subdomain }}.${{ env.ROOT_DOMAIN }}" >> $GITHUB_ENV
+          echo "Using root domain: $ROOT_DOMAIN for stage: ${{ inputs.stage }}"
+          echo "Full domain will be: ${{ inputs.website_subdomain }}.${{ env.ROOT_DOMAIN }}"
+
+      - name: Download Service Configuration
+        run: |
+          CONFIG_URL="https://raw.githubusercontent.com/CarouselLabs/service-configs/main/${{ inputs.service_name }}/serverless.yml"
+          echo "Downloading config from $CONFIG_URL"
+          curl -o serverless.yml $CONFIG_URL
+          if [ ! -s serverless.yml ]; then
+            echo "Error: Downloaded serverless.yml is empty. Check service name and repo."
+            exit 1
+          fi
+
+      - name: Install Serverless Framework
+        run: npm install -g serverless
+
+      - name: Deploy to AWS via Serverless
+        run: serverless deploy --stage ${{ inputs.stage }} --tenant ${{ inputs.tenant }} --website_subdomain ${{ inputs.website_subdomain }} --root_domain ${{ env.ROOT_DOMAIN }} --full_domain ${{ env.FULL_DOMAIN }}
+        env:
+          AWS_REGION: eu-west-1 

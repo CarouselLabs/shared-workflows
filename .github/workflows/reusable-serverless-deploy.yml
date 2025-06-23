@@ -1,0 +1,67 @@
+name: Reusable Serverless Deploy
+
+on:
+  workflow_call:
+    inputs:
+      tenant:
+        description: 'The tenant to deploy for'
+        required: true
+        type: string
+      stage:
+        description: 'The stage to deploy to (dev, prod)'
+        required: true
+        type: string
+      service_name:
+        description: 'The name of the service'
+        required: true
+        type: string
+      aws_region:
+        required: false
+        type: string
+        default: 'eu-west-1'
+    secrets:
+      ROLE_TO_ASSUME:
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.ROLE_TO_ASSUME }}
+          aws-region: ${{ inputs.aws_region }}
+          role-session-name: ${{ inputs.service_name }}-${{ inputs.tenant }}-${{ inputs.stage }}-deployment
+
+      - name: Download Service Configuration
+        run: |
+          CONFIG_URL="https://raw.githubusercontent.com/CarouselLabs/service-configs/main/${{ inputs.service_name }}/serverless.yml"
+          echo "Downloading config from $CONFIG_URL"
+          curl -o serverless.yml $CONFIG_URL
+          if [ ! -s serverless.yml ]; then
+            echo "Error: Downloaded serverless.yml is empty. Check service name and repo."
+            exit 1
+          fi
+
+      - name: Deploy Serverless Service
+        uses: serverless/github-action@v4
+        with:
+          command: deploy
+          options: --stage ${{ inputs.stage }} --param="tenant=${{ inputs.tenant }}" 
