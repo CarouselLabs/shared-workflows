@@ -40,29 +40,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
+          cache-dependency-path: '**/pnpm-lock.yaml'
+          cache: 'pnpm'
       
-      - name: Detect Package Manager
-        id: detect-package-manager
-        run: |
-          if [ -f "pnpm-lock.yaml" ]; then
-            echo "manager=pnpm" >> $GITHUB_OUTPUT
-            echo "command=install" >> $GITHUB_OUTPUT
-            echo "Installing pnpm..."
-            npm install -g pnpm
-          elif [ -f "yarn.lock" ]; then
-            echo "manager=yarn" >> $GITHUB_OUTPUT
-            echo "command=install" >> $GITHUB_OUTPUT
-          elif [ -f "package-lock.json" ]; then
-            echo "manager=npm" >> $GITHUB_OUTPUT
-            echo "command=ci" >> $GITHUB_OUTPUT
-          else
-            echo "manager=npm" >> $GITHUB_OUTPUT
-            echo "command=install" >> $GITHUB_OUTPUT
-          fi
+      - name: Install PNPM
+        run: npm install -g pnpm
 
       - name: Install Dependencies
-        run: ${{ steps.detect-package-manager.outputs.manager }} ${{ steps.detect-package-manager.outputs.command }}
+        run: pnpm install
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
