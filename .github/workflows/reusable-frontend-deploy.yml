@@ -42,8 +42,27 @@ jobs:
           node-version: '18'
           cache: 'npm'
       
-      - name: Install NPM Dependencies
-        run: npm ci
+      - name: Detect Package Manager
+        id: detect-package-manager
+        run: |
+          if [ -f "pnpm-lock.yaml" ]; then
+            echo "manager=pnpm" >> $GITHUB_OUTPUT
+            echo "command=install" >> $GITHUB_OUTPUT
+            echo "Installing pnpm..."
+            npm install -g pnpm
+          elif [ -f "yarn.lock" ]; then
+            echo "manager=yarn" >> $GITHUB_OUTPUT
+            echo "command=install" >> $GITHUB_OUTPUT
+          elif [ -f "package-lock.json" ]; then
+            echo "manager=npm" >> $GITHUB_OUTPUT
+            echo "command=ci" >> $GITHUB_OUTPUT
+          else
+            echo "manager=npm" >> $GITHUB_OUTPUT
+            echo "command=install" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install Dependencies
+        run: ${{ steps.detect-package-manager.outputs.manager }} ${{ steps.detect-package-manager.outputs.command }}
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -79,4 +98,4 @@ jobs:
       - name: Deploy to AWS via Serverless
         run: serverless deploy --stage ${{ inputs.stage }} --tenant ${{ inputs.tenant }} --website_subdomain ${{ inputs.website_subdomain }} --root_domain ${{ env.ROOT_DOMAIN }} --full_domain ${{ env.FULL_DOMAIN }}
         env:
-          AWS_REGION: eu-west-1 
+          AWS_REGION: eu-west-1
