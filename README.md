@@ -16,8 +16,8 @@ This workflow handles the deployment of Next.js frontend applications to AWS usi
 |------|-------------|----------|---------|
 | `tenant` | The tenant to deploy for | Yes | - |
 | `stage` | The stage to deploy to (dev, prod) | Yes | - |
-| `service_name` | The name of the service | Yes | - |
-| `website_subdomain` | The subdomain of the website to deploy | Yes | - |
+| `service_name` | The name of the service | No | Repository name |
+| `website_subdomain` | The subdomain of the website to deploy | No | Repository name |
 | `aws-account-id` | The AWS Account ID for deployment | Yes | - |
 
 #### Usage Example
@@ -38,29 +38,13 @@ on:
         description: 'The deployment stage'
         required: true
         type: string
-      website_subdomain:
-        description: 'The subdomain of the website to deploy'
-        required: true
-        type: string
-      service_name:
-        description: 'The name of the service'
-        required: true
-        type: string
-      aws-account-id:
-        description: "The AWS Account ID for deployment"
-        required: false
-        default: "123456789012"
-        type: string
 
 jobs:
   call-reusable-workflow:
     uses: CarouselLabs/shared-workflows/.github/workflows/reusable-frontend-deploy.yml@main
     with:
-      tenant: ${{ github.event.inputs.tenant }}
-      stage: ${{ github.event.inputs.stage }}
-      service_name: ${{ github.event.inputs.service_name }}
-      website_subdomain: ${{ github.event.inputs.website_subdomain }}
-      aws-account-id: ${{ github.event.inputs.aws-account-id || secrets.AWS_ACCOUNT_ID }}
+      tenant: ${{ github.event.inputs.tenant || 'default' }}
+      stage: ${{ github.event.inputs.stage || 'dev' }}
     secrets: inherit
 ```
 
@@ -76,7 +60,7 @@ This workflow handles the deployment of serverless backend services to AWS using
 |------|-------------|----------|---------|
 | `tenant` | The tenant to deploy for | Yes | - |
 | `stage` | The stage to deploy to (dev, prod) | Yes | - |
-| `service_name` | The name of the service | Yes | - |
+| `service_name` | The name of the service | No | Repository name |
 | `aws-account-id` | The AWS Account ID for deployment | Yes | - |
 
 #### Usage Example
@@ -97,24 +81,13 @@ on:
         description: 'The deployment stage'
         required: true
         type: string
-      service_name:
-        description: 'The name of the service'
-        required: true
-        type: string
-      aws-account-id:
-        description: "The AWS Account ID for deployment"
-        required: false
-        default: "123456789012"
-        type: string
 
 jobs:
   call-reusable-workflow:
     uses: CarouselLabs/shared-workflows/.github/workflows/reusable-serverless-deploy.yml@main
     with:
-      tenant: ${{ github.event.inputs.tenant }}
-      stage: ${{ github.event.inputs.stage }}
-      service_name: ${{ github.event.inputs.service_name }}
-      aws-account-id: ${{ github.event.inputs.aws-account-id || secrets.AWS_ACCOUNT_ID }}
+      tenant: ${{ github.event.inputs.tenant || 'default' }}
+      stage: ${{ github.event.inputs.stage || 'dev' }}
     secrets: inherit
 ```
 
@@ -150,10 +123,14 @@ The trust policy for the IAM role should allow GitHub Actions to assume the role
 }
 ```
 
-## Updating Service Repositories
+## Setting Up Service Repositories
 
-To update all service repositories to use these shared workflows, run the `update_workflow_files.py` script:
+Service repositories should create their own workflow files that reference these shared workflows. This pull-based model ensures better security and separation of concerns.
 
-```bash
-python scripts/update_workflow_files.py
-``` 
+To set up a new service repository:
+
+1. Create a `.github/workflows` directory in your repository
+2. Create a `deploy.yml` file with the minimal template shown in the examples above
+3. Ensure your repository has the necessary secrets for deployment
+
+For more detailed instructions, see the [Service Workflow Template Guide](../docs/guides/service_workflow_template.md). 
