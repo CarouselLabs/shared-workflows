@@ -86,9 +86,8 @@ jobs:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ inputs.aws-account-id }}:role/github-actions-oidc-role-tenant-terraform
+          role-to-assume: arn:aws:iam::516300428521:role/github-actions-oidc-role-tenant-terraform
           aws-region: eu-west-1
-          audience: sts.amazonaws.com
 
       - name: Set Domain Based on Stage
         id: set-domain
