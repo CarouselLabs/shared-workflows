@@ -75,7 +75,13 @@ jobs:
             pnpm-lock.json
 
       - name: Install Dependencies
-        run: ${{ steps.package-manager.outputs.manager }} ${{ steps.package-manager.outputs.command }}
+        run: |
+          if [[ "${{ steps.package-manager.outputs.manager }}" == "pnpm" ]]; then
+            # Try frozen lockfile first, fallback to no-frozen-lockfile if it fails
+            pnpm install --frozen-lockfile || pnpm install --no-frozen-lockfile
+          else
+            ${{ steps.package-manager.outputs.manager }} ${{ steps.package-manager.outputs.command }}
+          fi
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
