@@ -57,6 +57,12 @@ jobs:
             echo "lockfile_exists=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Setup PNPM
+        if: steps.package-manager.outputs.manager == 'pnpm'
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -67,13 +73,6 @@ jobs:
             yarn.lock
             pnpm-lock.yaml
             pnpm-lock.json
-      
-      - name: Setup PNPM
-        if: steps.package-manager.outputs.manager == 'pnpm'
-        uses: pnpm/action-setup@v2
-        with:
-          version: 8
-          run_install: false
 
       - name: Install Dependencies
         run: ${{ steps.package-manager.outputs.manager }} ${{ steps.package-manager.outputs.command }}
