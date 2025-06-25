@@ -101,14 +101,49 @@ jobs:
           echo "Using root domain: $ROOT_DOMAIN for stage: ${{ inputs.stage }}"
           echo "Full domain will be: ${{ inputs.website_subdomain }}.${{ env.ROOT_DOMAIN }}"
 
-      - name: Download Service Configuration
+      - name: Setup Serverless Configuration
         run: |
-          CONFIG_URL="https://raw.githubusercontent.com/CarouselLabs/service-configs/main/${{ inputs.service_name }}/serverless.yml"
-          echo "Downloading config from $CONFIG_URL"
-          curl -o serverless.yml $CONFIG_URL
-          if [ ! -s serverless.yml ]; then
-            echo "Error: Downloaded serverless.yml is empty. Check service name and repo."
-            exit 1
+          if [ -f "serverless.yml" ]; then
+            echo "✅ Using existing serverless.yml from repository"
+          else
+            echo "📝 Generating serverless.yml for frontend service"
+            cat > serverless.yml << EOF
+          service: ${{ inputs.service_name }}
+          
+          frameworkVersion: '4'
+          
+          provider:
+            name: aws
+            runtime: nodejs18.x
+            region: \${opt:aws-region, 'eu-west-1'}
+            stage: \${opt:stage, 'dev'}
+            environment:
+              STAGE: \${self:provider.stage}
+              TENANT: \${opt:tenant}
+              ROOT_DOMAIN: \${opt:root_domain}
+              FULL_DOMAIN: \${opt:full_domain}
+          
+          plugins:
+            - serverless-nextjs-plugin
+          
+          custom:
+            nextjs:
+              memory: 
+                - 128
+                - 512
+                - 1024
+              timeout: 
+                - 10
+                - 10
+                - 30
+              staticDir: out
+              assetsBucketName: \${self:service}-\${self:provider.stage}-assets-\${opt:tenant}
+          
+          resources:
+            Resources:
+              # CloudFront distribution will be created by serverless-nextjs-plugin
+          EOF
+            echo "✅ Generated serverless.yml for frontend deployment"
           fi
 
       - name: Install Serverless Framework
