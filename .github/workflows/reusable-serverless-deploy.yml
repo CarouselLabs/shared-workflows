@@ -83,4 +83,5 @@ jobs:
       - name: Deploy to AWS via Serverless
         run: serverless deploy --stage ${{ inputs.stage }} --tenant ${{ inputs.tenant }}
         env:
-          AWS_REGION: eu-west-1 
+          AWS_REGION: eu-west-1
+          SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_ACCESS_KEY }} 
