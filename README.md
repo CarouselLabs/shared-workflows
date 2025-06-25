@@ -2,6 +2,8 @@
 
 This repository contains reusable GitHub Actions workflows that can be used across multiple repositories in the CarouselLabs organization.
 
+Last updated: $(date)
+
 ## Available Workflows
 
 ### 1. Reusable Frontend Deployment Workflow
