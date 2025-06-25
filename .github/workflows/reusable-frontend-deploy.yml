@@ -162,11 +162,87 @@ jobs:
                 - 30
               staticDir: out
               assetsBucketName: \${self:service}-\${self:provider.stage}-assets-\${opt:tenant}
+              cloudFront:
+                # Add basic auth for dev environments
+                \${file(./cloudfront-auth.yml):custom.nextjs.cloudFront, {}}
           
           resources:
             Resources:
               # CloudFront distribution will be created by serverless-nextjs-plugin
+              
+              # Basic Auth Lambda@Edge function for dev environments
+              \${file(./cloudfront-auth.yml):resources.Resources, {}}
           EOF
+            
+            # Create CloudFront auth configuration for dev environments
+            if [[ "${{ inputs.stage }}" == "dev" ]]; then
+              cat > cloudfront-auth.yml << 'AUTH_EOF'
+          custom:
+            nextjs:
+              cloudFront:
+                distributionConfig:
+                  defaultCacheBehavior:
+                    lambdaFunctionAssociations:
+                      - eventType: viewer-request
+                        lambdaFunctionArn: !Ref BasicAuthLambdaVersionHash
+                        
+          resources:
+            Resources:
+              BasicAuthLambda:
+                Type: AWS::Lambda::Function
+                Properties:
+                  FunctionName: \${self:service}-\${self:provider.stage}-basic-auth
+                  Runtime: nodejs18.x
+                  Handler: index.handler
+                  Role: !GetAtt BasicAuthLambdaRole.Arn
+                  Code:
+                    ZipFile: |
+                      exports.handler = async (event) => {
+                        const request = event.Records[0].cf.request;
+                        const headers = request.headers;
+                        
+                        const authUser = '\${param:dev_auth_user, "dev"}';
+                        const authPass = '\${param:dev_auth_password, "dev123"}';
+                        const authString = 'Basic ' + Buffer.from(authUser + ':' + authPass).toString('base64');
+                        
+                        if (typeof headers.authorization == 'undefined' || headers.authorization[0].value != authString) {
+                          const response = {
+                            status: '401',
+                            statusDescription: 'Unauthorized',
+                            headers: {
+                              'www-authenticate': [{key: 'WWW-Authenticate', value:'Basic'}]
+                            },
+                          };
+                          return response;
+                        }
+                        
+                        return request;
+                      };
+                      
+              BasicAuthLambdaRole:
+                Type: AWS::IAM::Role
+                Properties:
+                  AssumeRolePolicyDocument:
+                    Version: '2012-10-17'
+                    Statement:
+                      - Effect: Allow
+                        Principal:
+                          Service:
+                            - lambda.amazonaws.com
+                            - edgelambda.amazonaws.com
+                        Action: sts:AssumeRole
+                  ManagedPolicyArns:
+                    - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+                    
+              BasicAuthLambdaVersionHash:
+                Type: AWS::Lambda::Version
+                Properties:
+                  FunctionName: !Ref BasicAuthLambda
+          AUTH_EOF
+            else
+              # Create empty auth file for prod
+              echo "# No authentication for production" > cloudfront-auth.yml
+            fi
             echo "✅ Generated serverless.yml for frontend deployment"
           fi
 
@@ -174,7 +250,7 @@ jobs:
         run: npm install -g serverless
 
       - name: Deploy to AWS via Serverless
-        run: serverless deploy --stage ${{ inputs.stage }} --param="tenant=${{ inputs.tenant }}" --param="site=${{ inputs.website_subdomain }}" --param="domain=${{ env.FULL_DOMAIN }}" --param="hosted_zone_id=${{ env.HOSTED_ZONE_ID }}" --param="website_subdomain=${{ inputs.website_subdomain }}" --param="root_domain=${{ env.ROOT_DOMAIN }}" --param="full_domain=${{ env.FULL_DOMAIN }}"
+        run: serverless deploy --stage ${{ inputs.stage }} --param="tenant=${{ inputs.tenant }}" --param="site=${{ inputs.website_subdomain }}" --param="domain=${{ env.FULL_DOMAIN }}" --param="hosted_zone_id=${{ env.HOSTED_ZONE_ID }}" --param="dev_auth_enabled=${{ inputs.stage == 'dev' && 'true' || 'false' }}" --param="dev_auth_user=${{ secrets.DEV_AUTH_USER || 'dev' }}" --param="dev_auth_password=${{ secrets.DEV_AUTH_PASSWORD || 'dev123' }}" --param="website_subdomain=${{ inputs.website_subdomain }}" --param="root_domain=${{ env.ROOT_DOMAIN }}" --param="full_domain=${{ env.FULL_DOMAIN }}"
         env:
           AWS_REGION: eu-west-1
           SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_ACCESS_KEY }} 
