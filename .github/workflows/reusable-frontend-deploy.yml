@@ -93,13 +93,17 @@ jobs:
         id: set-domain
         run: |
           if [[ "${{ inputs.stage }}" == "prod" ]]; then
-            echo "ROOT_DOMAIN=carousellabs.co" >> $GITHUB_ENV
+            ROOT_DOMAIN="carousellabs.co"
           else
-            echo "ROOT_DOMAIN=dev.carousellabs.co" >> $GITHUB_ENV
+            ROOT_DOMAIN="dev.carousellabs.co"
           fi
-          echo "FULL_DOMAIN=${{ inputs.website_subdomain }}.${{ env.ROOT_DOMAIN }}" >> $GITHUB_ENV
-          echo "Using root domain: $ROOT_DOMAIN for stage: ${{ inputs.stage }}"
-          echo "Full domain will be: ${{ inputs.website_subdomain }}.${{ env.ROOT_DOMAIN }}"
+          FULL_DOMAIN="${{ inputs.website_subdomain }}.${ROOT_DOMAIN}"
+          
+          echo "ROOT_DOMAIN=${ROOT_DOMAIN}" >> $GITHUB_ENV
+          echo "FULL_DOMAIN=${FULL_DOMAIN}" >> $GITHUB_ENV
+          
+          echo "Using root domain: ${ROOT_DOMAIN} for stage: ${{ inputs.stage }}"
+          echo "Full domain will be: ${FULL_DOMAIN}"
 
       - name: Setup Serverless Configuration
         run: |
