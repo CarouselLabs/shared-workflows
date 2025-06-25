@@ -154,7 +154,7 @@ jobs:
         run: npm install -g serverless
 
       - name: Deploy to AWS via Serverless
-        run: serverless deploy --stage ${{ inputs.stage }} --param="tenant=${{ inputs.tenant }}" --param="site=${{ inputs.website_subdomain }}" --param="website_subdomain=${{ inputs.website_subdomain }}" --param="root_domain=${{ env.ROOT_DOMAIN }}" --param="full_domain=${{ env.FULL_DOMAIN }}"
+        run: serverless deploy --stage ${{ inputs.stage }} --param="tenant=${{ inputs.tenant }}" --param="site=${{ inputs.website_subdomain }}" --param="domain=${{ env.FULL_DOMAIN }}" --param="website_subdomain=${{ inputs.website_subdomain }}" --param="root_domain=${{ env.ROOT_DOMAIN }}" --param="full_domain=${{ env.FULL_DOMAIN }}"
         env:
           AWS_REGION: eu-west-1
           SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_ACCESS_KEY }} 
