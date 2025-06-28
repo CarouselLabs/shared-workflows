@@ -125,6 +125,10 @@ jobs:
           
           echo "HOSTED_ZONE_ID=${ZONE_ID}" >> $GITHUB_ENV
 
+      - name: Generate unique ID for stack
+        id: unique-id
+        run: echo "id=$(date +%s)" >> $GITHUB_OUTPUT
+
       - name: Setup Serverless Configuration
         run: |
           if [ -f "serverless.yml" ]; then
@@ -138,6 +142,7 @@ jobs:
           
           provider:
             name: aws
+            stackName: \${self:service}-\${self:provider.stage}-\${opt:tenant}-stack-${{ steps.unique-id.outputs.id }}
             runtime: nodejs18.x
             region: \${opt:aws-region, 'eu-west-1'}
             stage: \${opt:stage, 'dev'}
@@ -201,9 +206,9 @@ jobs:
                         const request = event.Records[0].cf.request;
                         const headers = request.headers;
                         
-                        const authUser = '\${param:dev_auth_user, "dev"}';
-                        const authPass = '\${param:dev_auth_password, "dev123"}';
-                        const authString = 'Basic ' + Buffer.from(authUser + ':' + authPass).toString('base64');
+                                    const authUser = '\${param:dev_auth_user, "dev"}';
+            const authPass = '\${param:dev_auth_password, "mWfn5TxfBXRHxaAbdvD45TqWS0CSqNE3"}';
+            const authString = 'Basic ' + Buffer.from(authUser + ':' + authPass).toString('base64');
                         
                         if (typeof headers.authorization == 'undefined' || headers.authorization[0].value != authString) {
                           const response = {
@@ -266,7 +271,7 @@ jobs:
           
           PARAMS="$PARAMS --param=\"dev_auth_enabled=${{ inputs.stage == 'dev' && 'true' || 'false' }}\""
           PARAMS="$PARAMS --param=\"dev_auth_user=${{ secrets.DEV_AUTH_USER || 'dev' }}\""
-          PARAMS="$PARAMS --param=\"dev_auth_password=${{ secrets.DEV_AUTH_PASSWORD || 'dev123' }}\""
+          PARAMS="$PARAMS --param=\"dev_auth_password=${{ secrets.DEV_AUTH_PASSWORD || 'mWfn5TxfBXRHxaAbdvD45TqWS0CSqNE3' }}\""
           PARAMS="$PARAMS --param=\"website_subdomain=${{ inputs.website_subdomain }}\""
           PARAMS="$PARAMS --param=\"root_domain=${{ env.ROOT_DOMAIN }}\""
           PARAMS="$PARAMS --param=\"full_domain=${{ env.FULL_DOMAIN }}\""
