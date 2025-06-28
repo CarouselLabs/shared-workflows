@@ -53,10 +53,12 @@ jobs:
           REPO=$(yq e '.services[] | select(.name == "${{ inputs.service_name }}") | .repository' "$CONFIG_FILE")
           HOSTNAME=$(yq e ".domain_name.${{ inputs.stage }}.hostname" "$CONFIG_FILE")
           WEBSITE_SUBDOMAIN=$(yq e '.websites[] | select(.name == "website") | .subdomain.${{ inputs.stage }}' "$CONFIG_FILE")
+          ZONE_ID=$(yq e ".domain_name.${{ inputs.stage }}.zone_id" "$CONFIG_FILE")
           
           echo "service_repository=${ORG}/${REPO}" >> $GITHUB_OUTPUT
           echo "hostname=${HOSTNAME}" >> $GITHUB_OUTPUT
           echo "website_subdomain=${WEBSITE_SUBDOMAIN}" >> $GITHUB_OUTPUT
+          echo "zone_id=${ZONE_ID}" >> $GITHUB_OUTPUT
 
       - name: Generate GitHub App Token
         id: generate-token
@@ -174,7 +176,7 @@ jobs:
 
       - name: Deploy to AWS via Serverless
         working-directory: service
-        run: serverless deploy --stage ${{ inputs.stage }} --tenant ${{ inputs.tenant }} --root_domain ${{ env.ROOT_DOMAIN }} --full_domain ${{ env.FULL_DOMAIN }}
+        run: serverless deploy --stage ${{ inputs.stage }} --tenant ${{ inputs.tenant }} --root_domain ${{ env.ROOT_DOMAIN }} --full_domain ${{ env.FULL_DOMAIN }} --zone_id ${{ steps.tenant-config.outputs.zone_id }}
         env:
           AWS_REGION: eu-west-1
           SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_ACCESS_KEY }} 
