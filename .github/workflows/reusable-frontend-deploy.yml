@@ -15,10 +15,6 @@ on:
         description: 'The name of the service'
         required: true
         type: string
-      website_subdomain:
-        description: 'The subdomain of the website to deploy'
-        required: true
-        type: string
       aws-account-id:
         description: "The AWS Account ID for deployment"
         required: true
@@ -33,11 +29,54 @@ jobs:
       contents: read
 
     steps:
+      - name: Checkout Orchestration Repo
+        uses: actions/checkout@v4
+        with:
+          path: 'orchestration'
+
+      - name: Install yq
+        run: |
+          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
+          sudo chmod +x /usr/bin/yq
+
+      - name: Read Tenant Config
+        id: tenant-config
+        working-directory: orchestration
+        run: |
+          CONFIG_FILE="tenant-configurations/tenants/${{ inputs.tenant }}/config.yml"
+          if [ ! -f "$CONFIG_FILE" ]; then
+            echo "::error::Tenant configuration file not found at $CONFIG_FILE"
+            exit 1
+          fi
+
+          ORG=$(yq e ".tenant.github_org" "$CONFIG_FILE")
+          REPO=$(yq e '.services[] | select(.type == "frontend-next") | .repository' "$CONFIG_FILE")
+          HOSTNAME=$(yq e ".domain_name.${{ inputs.stage }}.hostname" "$CONFIG_FILE")
+          WEBSITE_SUBDOMAIN=$(yq e '.websites[] | select(.name == "website") | .subdomain.${{ inputs.stage }}' "$CONFIG_FILE")
+          
+          echo "service_repository=${ORG}/${REPO}" >> $GITHUB_OUTPUT
+          echo "hostname=${HOSTNAME}" >> $GITHUB_OUTPUT
+          echo "website_subdomain=${WEBSITE_SUBDOMAIN}" >> $GITHUB_OUTPUT
+
+      - name: Generate GitHub App Token
+        id: generate-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.TENANT_SYNC_APP_ID }}
+          private-key: ${{ secrets.TENANT_SYNC_APP_PRIVATE_KEY }}
+          owner: ${{ steps.tenant-config.outputs.service_repository.split('/')[0] }}
+          repositories: ${{ steps.tenant-config.outputs.service_repository.split('/')[1] }}
+
       - name: Checkout Service Code
         uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.tenant-config.outputs.service_repository }}
+          token: ${{ steps.generate-token.outputs.token }}
+          path: 'service'
 
       - name: Detect Package Manager
         id: package-manager
+        working-directory: service
         run: |
           if [ -f "pnpm-lock.yaml" ] || [ -f "pnpm-lock.json" ]; then
             echo "manager=pnpm" >> $GITHUB_OUTPUT
@@ -69,12 +108,13 @@ jobs:
           node-version: '18'
           cache: ${{ steps.package-manager.outputs.manager }}
           cache-dependency-path: |
-            package-lock.json
-            yarn.lock
-            pnpm-lock.yaml
-            pnpm-lock.json
+            service/package-lock.json
+            service/yarn.lock
+            service/pnpm-lock.yaml
+            service/pnpm-lock.json
 
       - name: Install Dependencies
+        working-directory: service
         run: |
           if [[ "${{ steps.package-manager.outputs.manager }}" == "pnpm" ]]; then
             # Try frozen lockfile first, fallback to no-frozen-lockfile if it fails
@@ -86,198 +126,55 @@ jobs:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::516300428521:role/github-actions-oidc-role-tenant-terraform
+          role-to-assume: arn:aws:iam::${{ inputs.aws-account-id }}:role/github-actions-oidc-role-tenant-terraform
           aws-region: eu-west-1
+          audience: sts.amazonaws.com
 
-      - name: Set Domain Based on Stage
+      - name: Set Domain Environment Variables
         id: set-domain
         run: |
-          if [[ "${{ inputs.stage }}" == "prod" ]]; then
-            ROOT_DOMAIN="carousellabs.co"
-          else
-            ROOT_DOMAIN="dev.carousellabs.co"
-          fi
-          FULL_DOMAIN="${{ inputs.website_subdomain }}.${ROOT_DOMAIN}"
+          HOSTNAME="${{ steps.tenant-config.outputs.hostname }}"
+          WEBSITE_SUBDOMAIN="${{ steps.tenant-config.outputs.website_subdomain }}"
           
+          if [ -z "$HOSTNAME" ] || [ "$HOSTNAME" == "null" ]; then
+            echo "::error::Hostname for stage '${{ inputs.stage }}' not found in config"
+            exit 1
+          fi
+
+          if [ -z "$WEBSITE_SUBDOMAIN" ] || [ "$WEBSITE_SUBDOMAIN" == "null" ]; then
+            echo "::warning::Website subdomain for stage '${{ inputs.stage }}' not found in config. Using 'www'."
+            WEBSITE_SUBDOMAIN="www"
+          fi
+
+          ROOT_DOMAIN="$HOSTNAME"
+          FULL_DOMAIN="$WEBSITE_SUBDOMAIN.$HOSTNAME"
+
           echo "ROOT_DOMAIN=${ROOT_DOMAIN}" >> $GITHUB_ENV
           echo "FULL_DOMAIN=${FULL_DOMAIN}" >> $GITHUB_ENV
           
-          echo "Using root domain: ${ROOT_DOMAIN} for stage: ${{ inputs.stage }}"
-          echo "Full domain will be: ${FULL_DOMAIN}"
+          echo "✅ Root domain: $ROOT_DOMAIN"
+          echo "✅ Full domain: $FULL_DOMAIN"
 
-      - name: Lookup Hosted Zone ID
-        id: lookup-zone
+      - name: Download Service Configuration
+        working-directory: service
         run: |
-          # Try to find the hosted zone ID for the root domain
-          ZONE_ID=$(aws route53 list-hosted-zones --query "HostedZones[?Name=='${ROOT_DOMAIN}.'].Id" --output text | sed 's|/hostedzone/||')
-          
-          if [ -z "$ZONE_ID" ] || [ "$ZONE_ID" = "None" ]; then
-            # Fallback: try without trailing dot
-            ZONE_ID=$(aws route53 list-hosted-zones --query "HostedZones[?Name=='${ROOT_DOMAIN}'].Id" --output text | sed 's|/hostedzone/||')
+          CONFIG_URL="https://raw.githubusercontent.com/CarouselLabs/service-configs/main/${{ inputs.service_name }}/serverless.yml"
+          echo "Downloading config from $CONFIG_URL"
+          curl -o serverless.yml -L "$CONFIG_URL"
+          if ! [ -s serverless.yml ]; then
+            echo "::error::Failed to download serverless.yml or file is empty."
+            exit 1
           fi
-          
-          if [ -z "$ZONE_ID" ] || [ "$ZONE_ID" = "None" ]; then
-            echo "⚠️ No hosted zone found for ${ROOT_DOMAIN}, using empty zone ID"
-            ZONE_ID=""
-          else
-            echo "✅ Found hosted zone ID: ${ZONE_ID} for ${ROOT_DOMAIN}"
-          fi
-          
-          echo "HOSTED_ZONE_ID=${ZONE_ID}" >> $GITHUB_ENV
-
-      - name: Generate unique ID for stack
-        id: unique-id
-        run: echo "id=$(date +%s)" >> $GITHUB_OUTPUT
-
-      - name: Setup Serverless Configuration
-        run: |
-          if [ -f "serverless.yml" ]; then
-            echo "✅ Using existing serverless.yml from repository"
-          else
-            echo "📝 Generating serverless.yml for frontend service"
-            cat > serverless.yml << EOF
-          service: ${{ inputs.service_name }}
-          
-          frameworkVersion: '4'
-          
-          provider:
-            name: aws
-            stackName: \${self:service}-\${self:provider.stage}-\${opt:tenant}-stack-${{ steps.unique-id.outputs.id }}
-            runtime: nodejs18.x
-            region: \${opt:aws-region, 'eu-west-1'}
-            stage: \${opt:stage, 'dev'}
-            environment:
-              STAGE: \${self:provider.stage}
-              TENANT: \${opt:tenant}
-              ROOT_DOMAIN: \${opt:root_domain}
-              FULL_DOMAIN: \${opt:full_domain}
-          
-          plugins:
-            - serverless-nextjs-plugin
-          
-          custom:
-            nextjs:
-              memory: 
-                - 128
-                - 512
-                - 1024
-              timeout: 
-                - 10
-                - 10
-                - 30
-              staticDir: out
-              assetsBucketName: \${self:service}-\${self:provider.stage}-assets-\${opt:tenant}
-              cloudFront:
-                # Add basic auth for dev environments
-                \${file(./cloudfront-auth.yml):custom.nextjs.cloudFront, {}}
-          
-          resources:
-            Resources:
-              # CloudFront distribution will be created by serverless-nextjs-plugin
-              
-              # Basic Auth Lambda@Edge function for dev environments
-              \${file(./cloudfront-auth.yml):resources.Resources, {}}
-          EOF
-            
-            # Create CloudFront auth configuration for dev environments
-            if [[ "${{ inputs.stage }}" == "dev" ]]; then
-              cat > cloudfront-auth.yml << 'AUTH_EOF'
-          custom:
-            nextjs:
-              cloudFront:
-                distributionConfig:
-                  defaultCacheBehavior:
-                    lambdaFunctionAssociations:
-                      - eventType: viewer-request
-                        lambdaFunctionArn: !Ref BasicAuthLambdaVersionHash
-                        
-          resources:
-            Resources:
-              BasicAuthLambda:
-                Type: AWS::Lambda::Function
-                Properties:
-                  FunctionName: \${self:service}-\${self:provider.stage}-basic-auth
-                  Runtime: nodejs18.x
-                  Handler: index.handler
-                  Role: !GetAtt BasicAuthLambdaRole.Arn
-                  Code:
-                    ZipFile: |
-                      exports.handler = async (event) => {
-                        const request = event.Records[0].cf.request;
-                        const headers = request.headers;
-                        
-                                    const authUser = '\${param:dev_auth_user, "dev"}';
-            const authPass = '\${param:dev_auth_password, "mWfn5TxfBXRHxaAbdvD45TqWS0CSqNE3"}';
-            const authString = 'Basic ' + Buffer.from(authUser + ':' + authPass).toString('base64');
-                        
-                        if (typeof headers.authorization == 'undefined' || headers.authorization[0].value != authString) {
-                          const response = {
-                            status: '401',
-                            statusDescription: 'Unauthorized',
-                            headers: {
-                              'www-authenticate': [{key: 'WWW-Authenticate', value:'Basic'}]
-                            },
-                          };
-                          return response;
-                        }
-                        
-                        return request;
-                      };
-                      
-              BasicAuthLambdaRole:
-                Type: AWS::IAM::Role
-                Properties:
-                  AssumeRolePolicyDocument:
-                    Version: '2012-10-17'
-                    Statement:
-                      - Effect: Allow
-                        Principal:
-                          Service:
-                            - lambda.amazonaws.com
-                            - edgelambda.amazonaws.com
-                        Action: sts:AssumeRole
-                  ManagedPolicyArns:
-                    - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-                    
-              BasicAuthLambdaVersionHash:
-                Type: AWS::Lambda::Version
-                Properties:
-                  FunctionName: !Ref BasicAuthLambda
-          AUTH_EOF
-            else
-              # Create empty auth file for prod
-              echo "# No authentication for production" > cloudfront-auth.yml
-            fi
-            echo "✅ Generated serverless.yml for frontend deployment"
-          fi
+          echo "✅ Downloaded serverless.yml"
+          cat serverless.yml
 
       - name: Install Serverless Framework
+        working-directory: service
         run: npm install -g serverless
 
       - name: Deploy to AWS via Serverless
-        run: |
-          # Build parameters conditionally
-          PARAMS="--stage ${{ inputs.stage }}"
-          PARAMS="$PARAMS --param=\"tenant=${{ inputs.tenant }}\""
-          PARAMS="$PARAMS --param=\"site=${{ inputs.website_subdomain }}\""
-          PARAMS="$PARAMS --param=\"domain=${{ env.FULL_DOMAIN }}\""
-          
-          # Only add hosted_zone_id if it's not empty
-          if [ -n "${{ env.HOSTED_ZONE_ID }}" ]; then
-            PARAMS="$PARAMS --param=\"hosted_zone_id=${{ env.HOSTED_ZONE_ID }}\""
-          else
-            PARAMS="$PARAMS --param=\"hosted_zone_id=none\""
-          fi
-          
-          PARAMS="$PARAMS --param=\"dev_auth_enabled=${{ inputs.stage == 'dev' && 'true' || 'false' }}\""
-          PARAMS="$PARAMS --param=\"dev_auth_user=${{ secrets.DEV_AUTH_USER || 'dev' }}\""
-          PARAMS="$PARAMS --param=\"dev_auth_password=${{ secrets.DEV_AUTH_PASSWORD || 'mWfn5TxfBXRHxaAbdvD45TqWS0CSqNE3' }}\""
-          PARAMS="$PARAMS --param=\"website_subdomain=${{ inputs.website_subdomain }}\""
-          PARAMS="$PARAMS --param=\"root_domain=${{ env.ROOT_DOMAIN }}\""
-          PARAMS="$PARAMS --param=\"full_domain=${{ env.FULL_DOMAIN }}\""
-          
-          echo "🚀 Deploying with parameters: $PARAMS"
-          eval "serverless deploy $PARAMS"
+        working-directory: service
+        run: serverless deploy --stage ${{ inputs.stage }} --tenant ${{ inputs.tenant }} --root_domain ${{ env.ROOT_DOMAIN }} --full_domain ${{ env.FULL_DOMAIN }}
         env:
           AWS_REGION: eu-west-1
           SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_ACCESS_KEY }} 
