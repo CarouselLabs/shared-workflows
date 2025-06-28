@@ -50,7 +50,7 @@ jobs:
           fi
 
           ORG=$(yq e ".tenant.github_org" "$CONFIG_FILE")
-          REPO=$(yq e '.services[] | select(.type == "frontend-next") | .repository' "$CONFIG_FILE")
+          REPO=$(yq e '.services[] | select(.name == "${{ inputs.service_name }}") | .repository' "$CONFIG_FILE")
           HOSTNAME=$(yq e ".domain_name.${{ inputs.stage }}.hostname" "$CONFIG_FILE")
           WEBSITE_SUBDOMAIN=$(yq e '.websites[] | select(.name == "website") | .subdomain.${{ inputs.stage }}' "$CONFIG_FILE")
           
