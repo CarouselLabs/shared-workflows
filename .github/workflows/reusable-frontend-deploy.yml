@@ -60,14 +60,23 @@ jobs:
           echo "website_subdomain=${WEBSITE_SUBDOMAIN}" >> $GITHUB_OUTPUT
           echo "zone_id=${ZONE_ID}" >> $GITHUB_OUTPUT
 
+      - name: Split repository string
+        id: split-repo
+        run: |
+          REPO_FULL="${{ steps.tenant-config.outputs.service_repository }}"
+          OWNER=$(echo "$REPO_FULL" | cut -d'/' -f1)
+          REPO_NAME=$(echo "$REPO_FULL" | cut -d'/' -f2)
+          echo "owner=${OWNER}" >> $GITHUB_OUTPUT
+          echo "repo_name=${REPO_NAME}" >> $GITHUB_OUTPUT
+
       - name: Generate GitHub App Token
         id: generate-token
         uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ secrets.TENANT_SYNC_APP_ID }}
           private-key: ${{ secrets.TENANT_SYNC_APP_PRIVATE_KEY }}
-          owner: ${{ steps.tenant-config.outputs.service_repository.split('/')[0] }}
-          repositories: ${{ steps.tenant-config.outputs.service_repository.split('/')[1] }}
+          owner: ${{ steps.split-repo.outputs.owner }}
+          repositories: ${{ steps.split-repo.outputs.repo_name }}
 
       - name: Checkout Service Code
         uses: actions/checkout@v4
