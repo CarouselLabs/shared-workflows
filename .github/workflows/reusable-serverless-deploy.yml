@@ -56,16 +56,27 @@
           - name: Read Tenant Config
             id: tenant-config
             working-directory: orchestration
+            env:
+              SERVICE_NAME: ${{ inputs.service_name }}
             run: |
               CONFIG_FILE="tenant-configurations/tenants/${{ inputs.tenant }}/config.yml"
               if [ ! -f "$CONFIG_FILE" ]; then
                 echo "::error::Tenant configuration file not found at $(pwd)/$CONFIG_FILE"
                 exit 1
               fi
+
+              echo "--- Debug: Contents of $CONFIG_FILE ---"
+              cat "$CONFIG_FILE"
+              echo "--- End Debug ---"
               
               ORG=$(yq e ".tenant.github_org" "$CONFIG_FILE")
-              REPO=$(yq e '.services[] | select(.name == "${{ inputs.service_name }}") | .repository' "$CONFIG_FILE")
+              REPO=$(yq e '.services[] | select(.name == env(SERVICE_NAME)) | .repository' "$CONFIG_FILE")
               
+              if [ -z "$REPO" ]; then
+                echo "::error::Could not find repository for service name '${SERVICE_NAME}' in $CONFIG_FILE"
+                exit 1
+              fi
+
               echo "service_repository=${ORG}/${REPO}" >> $GITHUB_OUTPUT
 
           - name: Split repository string
