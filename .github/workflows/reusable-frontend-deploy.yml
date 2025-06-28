@@ -29,10 +29,20 @@ jobs:
       contents: read
 
     steps:
+      - name: Generate Token for Orchestration Repo
+        id: generate-orchestration-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: 'CarouselLabs'
+
       - name: Checkout Orchestration Repo
         uses: actions/checkout@v4
         with:
+          repository: CarouselLabs/TenantTerraform
           path: 'orchestration'
+          token: ${{ steps.generate-orchestration-token.outputs.token }}
 
       - name: Install yq
         run: |
@@ -41,9 +51,8 @@ jobs:
 
       - name: Read Tenant Config
         id: tenant-config
-        working-directory: orchestration
         run: |
-          CONFIG_FILE="tenant-configurations/tenants/${{ inputs.tenant }}/config.yml"
+          CONFIG_FILE="${{ github.workspace }}/orchestration/tenant-configurations/tenants/${{ inputs.tenant }}/config.yml"
           if [ ! -f "$CONFIG_FILE" ]; then
             echo "::error::Tenant configuration file not found at $CONFIG_FILE"
             exit 1
@@ -73,8 +82,8 @@ jobs:
         id: generate-token
         uses: actions/create-github-app-token@v1
         with:
-          app-id: ${{ secrets.TENANT_SYNC_APP_ID }}
-          private-key: ${{ secrets.TENANT_SYNC_APP_PRIVATE_KEY }}
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
           owner: ${{ steps.split-repo.outputs.owner }}
           repositories: ${{ steps.split-repo.outputs.repo_name }}
 
