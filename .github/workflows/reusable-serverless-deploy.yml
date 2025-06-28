@@ -96,14 +96,12 @@
 
           - name: Setup Node.js
             uses: actions/setup-node@v4
-            working-directory: service
             with:
               node-version: '18'
               cache: 'npm'
           
           - name: Setup PNPM
             uses: pnpm/action-setup@v2
-            working-directory: service
             with:
               version: 8
               run_install: false
