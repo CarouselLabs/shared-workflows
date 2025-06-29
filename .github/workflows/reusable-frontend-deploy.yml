@@ -206,7 +206,15 @@ jobs:
 
       - name: Deploy to AWS via Serverless
         working-directory: service
-        run: pnpm serverless deploy --stage ${{ inputs.stage }} --tenant ${{ inputs.tenant }} --root_domain ${{ env.ROOT_DOMAIN }} --full_domain ${{ env.FULL_DOMAIN }} --zone_id ${{ steps.tenant-config.outputs.zone_id }}
+        run: |
+          echo "Checking for Serverless access key..."
+          if [ -z "${{ env.SERVERLESS_ACCESS_KEY }}" ]; then
+            echo "::error::SERVERLESS_ACCESS_KEY is not set."
+            exit 1
+          else
+            echo "SERVERLESS_ACCESS_KEY is set, proceeding with deployment."
+          fi
+          pnpm serverless deploy --stage ${{ inputs.stage }} --tenant ${{ inputs.tenant }} --root_domain ${{ env.ROOT_DOMAIN }} --full_domain ${{ env.FULL_DOMAIN }} --zone_id ${{ steps.tenant-config.outputs.zone_id }}
         env:
           AWS_REGION: eu-west-1
           SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_ACCESS_KEY }} 
