@@ -208,6 +208,7 @@ jobs:
         working-directory: service
         run: |
           echo "Checking for Serverless access key..."
+          echo "SERVERLESS_ACCESS_KEY value: $SERVERLESS_ACCESS_KEY"
           if [ -z "$SERVERLESS_ACCESS_KEY" ]; then
             echo "::error::SERVERLESS_ACCESS_KEY is not set."
             exit 1
