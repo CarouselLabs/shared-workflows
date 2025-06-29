@@ -81,7 +81,13 @@ jobs:
           echo "--- End Debug ---"
 
           ORG=$(yq e ".tenant.github_org" "$CONFIG_FILE")
-          REPO=$(yq e '.services[] | select(.name == env(SERVICE_NAME)) | .repository' "$CONFIG_FILE")
+          
+          echo "--- YQ Debug ---"
+          echo "Input service name from workflow: ${{ inputs.service_name }}"
+          echo "SERVICE_NAME env var: ${SERVICE_NAME}"
+          echo "Querying for repo: .services[] | select(.name == env(SERVICE_NAME)) | .repository"
+          REPO=$(yq e '.services[] | select(.name == env(SERVICE_name)) | .repository' "$CONFIG_FILE")
+          echo "--- End YQ Debug ---"
 
           if [ -z "$REPO" ]; then
             echo "::error::Could not find repository for service name '${SERVICE_NAME}' in $CONFIG_FILE"
