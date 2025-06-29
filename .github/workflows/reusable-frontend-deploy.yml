@@ -19,6 +19,10 @@ on:
         description: "The AWS Account ID for deployment"
         required: true
         type: string
+      website_subdomain:
+        description: 'Website subdomain. Uses default if not provided.'
+        required: false
+        type: string
     secrets:
       APP_ID:
         description: 'GitHub App ID for token generation'
@@ -85,12 +89,10 @@ jobs:
           fi
 
           HOSTNAME=$(yq e ".domain_name.${{ inputs.stage }}.hostname" "$CONFIG_FILE")
-          WEBSITE_SUBDOMAIN=$(yq e '.websites[] | select(.name == "website") | .subdomain.${{ inputs.stage }}' "$CONFIG_FILE")
           ZONE_ID=$(yq e ".domain_name.${{ inputs.stage }}.zone_id" "$CONFIG_FILE")
           
           echo "service_repository=${ORG}/${REPO}" >> $GITHUB_OUTPUT
           echo "hostname=${HOSTNAME}" >> $GITHUB_OUTPUT
-          echo "website_subdomain=${WEBSITE_SUBDOMAIN}" >> $GITHUB_OUTPUT
           echo "zone_id=${ZONE_ID}" >> $GITHUB_OUTPUT
 
       - name: Split repository string
@@ -153,6 +155,7 @@ jobs:
           version: 10
 
       - name: Install dependencies
+        working-directory: service
         run: pnpm install
 
       - name: Configure AWS Credentials
@@ -166,7 +169,7 @@ jobs:
         id: set-domain
         run: |
           HOSTNAME="${{ steps.tenant-config.outputs.hostname }}"
-          WEBSITE_SUBDOMAIN="${{ steps.tenant-config.outputs.website_subdomain }}"
+          WEBSITE_SUBDOMAIN="${{ inputs.website_subdomain }}"
           
           if [ -z "$HOSTNAME" ] || [ "$HOSTNAME" == "null" ]; then
             echo "::error::Hostname for stage '${{ inputs.stage }}' not found in config"
