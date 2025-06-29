@@ -202,11 +202,11 @@ jobs:
 
       - name: Install Serverless Framework
         working-directory: service
-        run: npm install -g serverless
+        run: pnpm add serverless@4
 
       - name: Deploy to AWS via Serverless
         working-directory: service
-        run: serverless deploy --stage ${{ inputs.stage }} --tenant ${{ inputs.tenant }} --root_domain ${{ env.ROOT_DOMAIN }} --full_domain ${{ env.FULL_DOMAIN }} --zone_id ${{ steps.tenant-config.outputs.zone_id }}
+        run: pnpm serverless deploy --stage ${{ inputs.stage }} --tenant ${{ inputs.tenant }} --root_domain ${{ env.ROOT_DOMAIN }} --full_domain ${{ env.FULL_DOMAIN }} --zone_id ${{ steps.tenant-config.outputs.zone_id }}
         env:
           AWS_REGION: eu-west-1
           SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_ACCESS_KEY }} 
