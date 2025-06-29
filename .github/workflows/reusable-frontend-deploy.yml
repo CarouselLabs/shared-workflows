@@ -19,6 +19,16 @@ on:
         description: "The AWS Account ID for deployment"
         required: true
         type: string
+    secrets:
+      APP_ID:
+        description: 'GitHub App ID for token generation'
+        required: true
+      APP_PRIVATE_KEY:
+        description: 'GitHub App Private Key for token generation'
+        required: true
+      SERVERLESS_ACCESS_KEY:
+        description: 'Serverless Framework access key'
+        required: true
 
 jobs:
   deploy-frontend:
@@ -131,32 +141,19 @@ jobs:
             echo "lockfile_exists=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Setup PNPM
-        if: steps.package-manager.outputs.manager == 'pnpm'
-        uses: pnpm/action-setup@v2
-        with:
-          version: 8
-
-      - name: Setup Node.js
+      - name: Use Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: ${{ steps.package-manager.outputs.manager }}
-          cache-dependency-path: |
-            service/package-lock.json
-            service/yarn.lock
-            service/pnpm-lock.yaml
-            service/pnpm-lock.json
+          node-version: '24'
+          cache: 'pnpm'
 
-      - name: Install Dependencies
-        working-directory: service
-        run: |
-          if [[ "${{ steps.package-manager.outputs.manager }}" == "pnpm" ]]; then
-            # Try frozen lockfile first, fallback to no-frozen-lockfile if it fails
-            pnpm install --frozen-lockfile || pnpm install --no-frozen-lockfile
-          else
-            ${{ steps.package-manager.outputs.manager }} ${{ steps.package-manager.outputs.command }}
-          fi
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install dependencies
+        run: pnpm install
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
