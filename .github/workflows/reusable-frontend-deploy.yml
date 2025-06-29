@@ -169,6 +169,7 @@ jobs:
         id: set-domain
         run: |
           HOSTNAME="${{ steps.tenant-config.outputs.hostname }}"
+          ZONE_ID="${{ steps.tenant-config.outputs.zone_id }}"
           WEBSITE_SUBDOMAIN="${{ inputs.website_subdomain }}"
           
           if [ -z "$HOSTNAME" ] || [ "$HOSTNAME" == "null" ]; then
@@ -186,22 +187,11 @@ jobs:
 
           echo "ROOT_DOMAIN=${ROOT_DOMAIN}" >> $GITHUB_ENV
           echo "FULL_DOMAIN=${FULL_DOMAIN}" >> $GITHUB_ENV
+          echo "ZONE_ID=${ZONE_ID}" >> $GITHUB_ENV
           
           echo "✅ Root domain: $ROOT_DOMAIN"
           echo "✅ Full domain: $FULL_DOMAIN"
-
-      - name: Download Service Configuration
-        working-directory: service
-        run: |
-          CONFIG_URL="https://raw.githubusercontent.com/CarouselLabs/service-configs/main/${{ inputs.service_name }}/serverless.yml"
-          echo "Downloading config from $CONFIG_URL"
-          curl -o serverless.yml -L "$CONFIG_URL"
-          if ! [ -s serverless.yml ]; then
-            echo "::error::Failed to download serverless.yml or file is empty."
-            exit 1
-          fi
-          echo "✅ Downloaded serverless.yml"
-          cat serverless.yml
+          echo "✅ Zone ID: $ZONE_ID"
 
       - name: Install Serverless Framework
         working-directory: service
@@ -210,15 +200,9 @@ jobs:
       - name: Deploy to AWS via Serverless
         working-directory: service
         run: |
-          echo "Checking for Serverless access key..."
-          echo "SERVERLESS_ACCESS_KEY value: $SERVERLESS_ACCESS_KEY"
-          if [ -z "$SERVERLESS_ACCESS_KEY" ]; then
-            echo "::error::SERVERLESS_ACCESS_KEY is not set."
-            exit 1
-          else
-            echo "SERVERLESS_ACCESS_KEY is set, proceeding with deployment."
-          fi
-          pnpm serverless deploy --stage ${{ inputs.stage }} --tenant ${{ inputs.tenant }} --root_domain ${{ env.ROOT_DOMAIN }} --full_domain ${{ env.FULL_DOMAIN }} --zone_id ${{ steps.tenant-config.outputs.zone_id }}
+          echo "Running serverless deploy for stage: ${{ inputs.stage }}"
+          echo "Full domain for deployment: ${{ env.FULL_DOMAIN }}"
+          pnpm serverless deploy --stage ${{ inputs.stage }}
         env:
           AWS_REGION: eu-west-1
-          SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_ACCESS_KEY }} 
+          SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_ACCESS_KEY }}
