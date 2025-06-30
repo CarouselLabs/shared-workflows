@@ -30,6 +30,7 @@
         permissions:
           id-token: write
           contents: read
+          packages: read
 
         steps:
           - name: Generate Token for Orchestration Repo
@@ -105,18 +106,6 @@
               token: ${{ steps.generate-token.outputs.token }}
               path: 'service'
 
-          - name: Setup Node.js
-            uses: actions/setup-node@v4
-            with:
-              node-version: '18'
-              cache: 'npm'
-          
-          - name: Setup PNPM
-            uses: pnpm/action-setup@v2
-            with:
-              version: 8
-              run_install: false
-
           - name: Get package manager
             id: package-manager
             working-directory: service
@@ -131,6 +120,21 @@
                 echo "manager=npm" >> $GITHUB_OUTPUT
                 echo "command=npm ci" >> $GITHUB_OUTPUT
               fi
+
+          - name: Setup Node.js
+            uses: actions/setup-node@v4
+            with:
+              node-version: '18'
+              cache: ${{ steps.package-manager.outputs.manager }}
+              registry-url: 'https://npm.pkg.github.com'
+              scope: '@vaebz'
+          
+          - name: Setup PNPM
+            if: steps.package-manager.outputs.manager == 'pnpm'
+            uses: pnpm/action-setup@v2
+            with:
+              version: 8
+              run_install: false
 
           - name: Install Dependencies
             working-directory: service

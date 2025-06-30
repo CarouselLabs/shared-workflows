@@ -1,0 +1,124 @@
+name: Reusable Package Publishing
+
+on:
+  workflow_call:
+    inputs:
+      version_input:
+        description: 'Version from workflow_dispatch (e.g., patch, minor, major, or specific version)'
+        required: false
+        type: string
+      is_release_event:
+        description: 'True if the trigger was a release event'
+        required: true
+        type: boolean
+      ref_name:
+        description: 'github.ref_name from the calling workflow'
+        required: true
+        type: string
+      default_branch:
+        description: 'The default branch of the repository'
+        required: true
+        type: string
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Required for versioning and pushing changes
+
+      - name: Get package manager
+        id: package-manager
+        run: |
+          if [ -f "pnpm-lock.yaml" ]; then
+            echo "manager=pnpm" >> $GITHUB_OUTPUT
+            echo "command=pnpm install --frozen-lockfile" >> $GITHUB_OUTPUT
+            echo "lockfile=pnpm-lock.yaml" >> $GITHUB_OUTPUT
+          elif [ -f "yarn.lock" ]; then
+            echo "manager=yarn" >> $GITHUB_OUTPUT
+            echo "command=yarn install --frozen-lockfile" >> $GITHUB_OUTPUT
+            echo "lockfile=yarn.lock" >> $GITHUB_OUTPUT
+          else
+            echo "manager=npm" >> $GITHUB_OUTPUT
+            echo "command=npm ci" >> $GITHUB_OUTPUT
+            echo "lockfile=package-lock.json" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@vaebz'
+          cache: ${{ steps.package-manager.outputs.manager }}
+
+      - name: Setup PNPM
+        if: steps.package-manager.outputs.manager == 'pnpm'
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+          run_install: false
+
+      - name: Configure Git
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+      - name: Install dependencies
+        run: ${{ steps.package-manager.outputs.command }}
+
+      - name: Determine Version
+        id: versioner
+        run: |
+          if [[ "${{ inputs.is_release_event }}" == "true" ]]; then
+            VERSION_NAME="${{ inputs.ref_name }}"
+            VERSION=${VERSION_NAME#v}
+            echo "Release event: Using version from tag $VERSION_NAME -> $VERSION"
+            npm version $VERSION --no-git-tag-version --no-commit-hooks --allow-same-version
+            echo "NEEDS_COMMIT=true" >> $GITHUB_OUTPUT
+          else
+            echo "Workflow dispatch: Bumping version with '${{ inputs.version_input }}'"
+            npm version ${{ inputs.version_input }}
+            echo "NEEDS_COMMIT=false" >> $GITHUB_OUTPUT # npm version already commits and tags
+          fi
+
+      - name: Build library
+        run: |
+          if npm run --if-present build:lib; then
+            echo "build:lib script found and executed."
+          elif npm run --if-present build; then
+            echo "build script found and executed."
+          else
+            echo "No build or build:lib script found. Skipping build step."
+          fi
+
+      - name: Publish to GitHub Packages
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Commit and Push package.json changes (for release event)
+        if: steps.versioner.outputs.NEEDS_COMMIT == 'true' && inputs.is_release_event == true
+        run: |
+          LOCKFILE=${{ steps.package-manager.outputs.lockfile }}
+          git add package.json "$LOCKFILE"
+          
+          if ! git diff --staged --quiet; then
+            echo "package.json or lockfile changed, creating commit."
+            git commit -m "chore(release): bump version to ${{ inputs.ref_name }}"
+            echo "Pushing version bump to ${{ inputs.default_branch }}"
+            git push origin HEAD:"${{ inputs.default_branch }}"
+          else
+            echo "No changes to package.json or lockfile to commit."
+          fi
+
+      - name: Push version commit and tag (for workflow_dispatch event)
+        if: steps.versioner.outputs.NEEDS_COMMIT == 'false' && inputs.is_release_event == false
+        run: |
+          git push
+          git push --tags 
