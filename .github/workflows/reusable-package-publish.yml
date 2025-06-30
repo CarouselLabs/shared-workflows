@@ -92,8 +92,13 @@ jobs:
             echo "NEEDS_COMMIT=false" >> $GITHUB_OUTPUT
             echo "NEEDS_PUSH=true" >> $GITHUB_OUTPUT # npm version already commits and tags
           elif [[ "${{ inputs.event_name }}" == "push" ]]; then
-            echo "Push event to develop: creating pre-release version"
-            npm version prerelease --preid develop
+            if [[ "${{ inputs.ref_name }}" == "develop" ]]; then
+              echo "Push event to develop: creating pre-release version"
+              npm version prerelease --preid develop
+            elif [[ "${{ inputs.ref_name }}" == "main" ]]; then
+              echo "Push event to main: creating rc version"
+              npm version prerelease --preid rc
+            fi
             echo "NEEDS_COMMIT=false" >> $GITHUB_OUTPUT
             echo "NEEDS_PUSH=true" >> $GITHUB_OUTPUT
           else
