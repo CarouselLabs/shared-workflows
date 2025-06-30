@@ -3,6 +3,10 @@ name: Reusable Package Publishing
 on:
   workflow_call:
     inputs:
+      event_name:
+        description: 'The name of the event that triggered the workflow (e.g., push, release)'
+        required: true
+        type: string
       version_input:
         description: 'Version from workflow_dispatch (e.g., patch, minor, major, or specific version)'
         required: false
@@ -75,16 +79,26 @@ jobs:
       - name: Determine Version
         id: versioner
         run: |
-          if [[ "${{ inputs.is_release_event }}" == "true" ]]; then
+          if [[ "${{ inputs.event_name }}" == "release" ]]; then
             VERSION_NAME="${{ inputs.ref_name }}"
             VERSION=${VERSION_NAME#v}
             echo "Release event: Using version from tag $VERSION_NAME -> $VERSION"
             npm version $VERSION --no-git-tag-version --no-commit-hooks --allow-same-version
             echo "NEEDS_COMMIT=true" >> $GITHUB_OUTPUT
-          else
+            echo "NEEDS_PUSH=false" >> $GITHUB_OUTPUT
+          elif [[ "${{ inputs.event_name }}" == "workflow_dispatch" ]]; then
             echo "Workflow dispatch: Bumping version with '${{ inputs.version_input }}'"
             npm version ${{ inputs.version_input }}
-            echo "NEEDS_COMMIT=false" >> $GITHUB_OUTPUT # npm version already commits and tags
+            echo "NEEDS_COMMIT=false" >> $GITHUB_OUTPUT
+            echo "NEEDS_PUSH=true" >> $GITHUB_OUTPUT # npm version already commits and tags
+          elif [[ "${{ inputs.event_name }}" == "push" ]]; then
+            echo "Push event to develop: creating pre-release version"
+            npm version prerelease --preid develop
+            echo "NEEDS_COMMIT=false" >> $GITHUB_OUTPUT
+            echo "NEEDS_PUSH=true" >> $GITHUB_OUTPUT
+          else
+            echo "Unsupported event type: ${{ inputs.event_name }}"
+            exit 1
           fi
 
       - name: Build library
@@ -117,8 +131,8 @@ jobs:
             echo "No changes to package.json or lockfile to commit."
           fi
 
-      - name: Push version commit and tag (for workflow_dispatch event)
-        if: steps.versioner.outputs.NEEDS_COMMIT == 'false' && inputs.is_release_event == false
+      - name: Push version commit and tag
+        if: steps.versioner.outputs.NEEDS_PUSH == 'true'
         run: |
           git push
           git push --tags 
